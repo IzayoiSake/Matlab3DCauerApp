@@ -1,0 +1,10 @@
+# ignore matlab project files
+*.prj
+# ignore matlab app install files
+*.mlappinstall
+# ignore matlab app backup files
+*.mltbx
+# ingore simulink project folders
+slprj
+# ingore simulink slxc files
+*.slxc

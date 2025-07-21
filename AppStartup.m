@@ -1,6 +1,6 @@
 function AppStartup(app)
 % add folder "src" and subfolders to path
-    addpath(genpath('_src'));
+    % addpath(genpath('_src'));
 % NomenclatureDropDown
     NomenclatureL = GetNomenclatureList();
     app.NomenclatureDropDown.Items = NomenclatureL;

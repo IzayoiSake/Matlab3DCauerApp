@@ -61,6 +61,15 @@ function [NodeLink] = GetNodeLink(NodeName,LinkData)
             MaxLayer = max(LayerRange);
             MinLayer = min(LayerRange);
             NodePosToBeLinked = LinkFile(i,2:end);
+            % 去除 missing 数据
+            NodePosToBeLinkedTemp = [];
+            for j = 1:length(NodePosToBeLinked)
+                if ~ismissing(NodePosToBeLinked(j))
+                    NodePosToBeLinkedTemp = [NodePosToBeLinkedTemp;NodePosToBeLinked(j)];
+                end
+            end
+            NodePosToBeLinked = NodePosToBeLinkedTemp;
+            NodePosToBeLinked = string(NodePosToBeLinked);
             NodePosToBeLinked = NodePosToBeLinked(:);
             [ThisRowPos,~] = GetNodePosAndLay(NodePosToBeLinked);
 
@@ -100,6 +109,15 @@ function [NodeLink] = GetNodeLink(NodeName,LinkData)
                 continue
             end
             NodeNameToBeLinked = LinkFile(i,2:end);
+            % 去除 missing 数据
+            NodePosToBeLinkedTemp = [];
+            for j = 1:length(NodeNameToBeLinked)
+                if ~ismissing(NodeNameToBeLinked(j))
+                    NodePosToBeLinkedTemp = [NodePosToBeLinkedTemp;NodeNameToBeLinked(j)];
+                end
+            end
+            NodeNameToBeLinked = NodePosToBeLinkedTemp;
+            NodeNameToBeLinked = string(NodeNameToBeLinked);
             NodeNameToBeLinked = NodeNameToBeLinked(:);
             [ThisRowPos,ThisRowLay] = GetNodePosAndLay(NodeNameToBeLinked);
             

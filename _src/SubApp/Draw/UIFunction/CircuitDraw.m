@@ -44,7 +44,10 @@ function CircuitDraw(app)
         end
         figure( 'Name' , 'Temperature' , 'NumberTitle' , 'off' );
         SetFigure();
-        plot(Time, Figure1Value);
+        line = plot(Time, Figure1Value(:, 1:DrawNum), "LineStyle", "-");
+        hold on;
+        line = plot(Time, Figure1Value(:, DrawNum+1:end), "LineStyle", "--");
+        hold off;
         legend(Figure1Legend);
         xlabel( 'Time (s)' );
         ylabel( 'Temperature (℃)' );
@@ -86,6 +89,6 @@ function SetFigure()
         set(0,'DefaultAxesXLim',[10,100]);
     % 线宽全部设置为2
         set(0,'DefaultLineLineWidth',2);
-    end
+end
 
 

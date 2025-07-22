@@ -32,20 +32,31 @@ function [Data,Type] = ReadFile(Path)
 % 2: Determination of file type based on file extension and file flag
     try
         if strcmp(ext,".csv")
-            DataTemp = readlines(Path);
+            % DataTemp = readlines(Path);
+            % DataTemp = string(DataTemp);
+
+            DataTemp = readcell(Path, "Delimiter", ",");
+            for i = 1:numel(DataTemp)
+                if ismissing(DataTemp{i})
+                    DataTemp{i} = '';
+                end
+            end
             DataTemp = string(DataTemp);
+
             if isempty(DataTemp)
                 ErrorMessage = Path + newline + "File is empty";
                 error(ErrorMessage);
             end
-            if ~contains(DataTemp(1),"Summary report for")
-                ErrorMessage = Path + newline + "Unknown file type";
-                error(ErrorMessage);
-            end
+            % if ~contains(DataTemp(1),"Summary report for")
+            %     ErrorMessage = Path + newline + "Unknown file type";
+            %     error(ErrorMessage);
+            % end
             Type = "TS";
-            DataTemp = DataTemp(6:end);
-            DataTemp = DataTemp(~cellfun('isempty',DataTemp));
-            DataTemp = split(DataTemp,",");
+            % DataTemp = DataTemp(6:end);
+            % DataTemp = DataTemp(~cellfun('isempty',DataTemp));
+            % DataTemp = split(DataTemp,",");
+            DataTemp = DataTemp(4:end, :);
+
         elseif strcmp(ext,".xlsx")
             DataTemp = readcell(Path);
             DataTemp = string(DataTemp);

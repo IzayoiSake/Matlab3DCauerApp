@@ -8,3 +8,12 @@
 slprj
 # ingore simulink slxc files
 *.slxc
+**/resources/project/**/*
+resources
+MainApp Toolbox
+**/*.prj
+**/*.prj.bak
+**/.git/**/*
+**/.svn/**/*
+**/.buildtool/**/*
+**/*.asv

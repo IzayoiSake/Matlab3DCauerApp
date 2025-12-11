@@ -56,6 +56,8 @@ function [ModelStruct] = PatternSearchC(ModelStruct)
         ModelStruct.Temp.StartNode = StartNode;
         ModelStruct.Temp.EndNode = EndNode;
         ModelStruct.Temp.State = "PatternSearchC() Searching";
+        CurrentDir = pwd;
+        ModelStruct.Temp.CurrentDir = CurrentDir;
         Cr = zeros(length(ModelStruct.NodeNameEffective),1);
         ModelStruct.Temp.Cr = Cr;
         % check 'local' parallel pool
@@ -145,9 +147,9 @@ function [ModelStruct] = PatternSearchC(ModelStruct)
                     end
                     CrTemp(i) = SimulinkOperation(Exp_T,R,P,Ptime,T,Ttime,slxFilePath,StepSize);
                     % close all the simulink files named starting with "PatternSearch"
-                    close_system("PatternSearch*",0);
+                    close_system("PatternSearch" + string(i), 0);
                 catch ME
-                    close_system("PatternSearch*",0);
+                    close_system("PatternSearch" + string(i), 0);
                     ErrorMessage = "Error when Calculating C(" + ThisNodeName + ")" + newline;
                     ErrorMessage = ErrorMessage + CatchProcess(ME,1);
                     error(ErrorMessage);

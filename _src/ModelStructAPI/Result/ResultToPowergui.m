@@ -3,15 +3,15 @@ function ModelStruct = ResultToPowergui(ModelStruct)
     slxPath = ModelStruct.Result.CircuitResultPath;
     TemptPath = ModelStruct.Result.TransTemptPath;
     PowerPath = ModelStruct.Result.TransPowerPath;
+    SimulinkName = "";
     try
     % 1: get Simulink file's path
         try
-            [SimulinkFileDir, SimulinkFileName, SimulinkFileExt] = fileparts(slxPath);
+            [SimulinkFileDir, SimulinkFileName, ~] = fileparts(slxPath);
         catch
             error('Simulink file path is not valid');
         end
         SimulinkName = SimulinkFileName;
-        Example_1Name = "Example_1";
     % 2: Read the T and P files
         try
             [TemperatureData,Type] = ReadFile(TemptPath);
@@ -31,29 +31,22 @@ function ModelStruct = ResultToPowergui(ModelStruct)
             ErrorMessage = CatchProcess(ME,1);
             error(ErrorMessage);
         end
-    % 3: get current dir and change to Simulink file's path
+    % 3: check the output folder
         try
-            CurrentDir = pwd;
-            cd(SimulinkFileDir);
+            if SimulinkFileDir ~= "" && ~exist(SimulinkFileDir, 'dir')
+                mkdir(SimulinkFileDir);
+            end
         catch ME
             ErrorMessage = CatchProcess(ME,1);
             error(ErrorMessage);
         end
     % 4: create a new Simulink file and overwrite the old one
         try
+            if bdIsLoaded(SimulinkName)
+                close_system(SimulinkName,0);
+            end
             new_system(SimulinkName);
-            save_system(SimulinkName,SimulinkName,'OverwriteIfChangedOnDisk',true);
-            if ~bdIsLoaded(SimulinkName)
-                load_system(SimulinkName);
-            end
-        catch ME
-            ErrorMessage = CatchProcess(ME,1);
-            error(ErrorMessage);
-        end
-        try
-            if ~bdIsLoaded(Example_1Name)
-                load_system(Example_1Name);
-            end
+            save_system(SimulinkName,slxPath,'OverwriteIfChangedOnDisk',true);
         catch ME
             ErrorMessage = CatchProcess(ME,1);
             error(ErrorMessage);
@@ -92,6 +85,7 @@ function ModelStruct = ResultToPowergui(ModelStruct)
         hws.assignin('THeader',THeader);
         hws.assignin('Ttime',Ttime);
         hws.assignin('Tdata',Tdata);
+        hws.assignin('StepSize',ModelStruct.Temp.StepSize);
         DataSignal = Simulink.Signal;
         DataSignal.Complexity = 'real';
         DataSignal.Dimensions = size(ModelStruct.NodeNameEffective);
@@ -116,20 +110,18 @@ function ModelStruct = ResultToPowergui(ModelStruct)
 
     % Add Blocks
         try
-        % Add the powergui block
-            Name = "Powergui";
+        % Add the Simscape Solver Configuration block
+            Name = "Solver Configuration";
             BlockPath = SimulinkName + "/" + Name;
-            BlockLib = "spspowerguiLib/powergui";
+            BlockLib = "nesl_utility/Solver Configuration";
             try
                 add_block(BlockLib, BlockPath);
             catch
                 
             end
-            % set the block parameters
-            set_param(BlockPath,"SimulationMode","Continuous");
-            StepSize = ModelStruct.Temp.StepSize;
-            StepSize = string(StepSize);
-            % set_param(BlockPath,"SampleTime",StepSize);
+            set_param(BlockPath,"UseLocalSolver","on");
+            set_param(BlockPath,"LocalSolverChoice","NE_TRAPEZOIDAL_ADVANCER");
+            set_param(BlockPath,"LocalSolverSampleTime","StepSize");
             % set the block position
             BlockSize = [100,100];
             if ~exist('Position','var')
@@ -143,20 +135,19 @@ function ModelStruct = ResultToPowergui(ModelStruct)
             for i = 1:length(ModelStruct.NodeNameEffective)
                 Name = "C-" + ModelStruct.NodeNameEffective(i);
                 BlockPath = SimulinkName + "/" + Name;
-                BlockLib = "sps_lib/Passives/Series RLC Branch";
+                BlockLib = "fl_lib/Electrical/Electrical Elements/Capacitor";
                 try
                     add_block(BlockLib, BlockPath);
                 catch
                     
                 end
                 % set the block parameters
-                set_param(BlockPath,"BranchType","C");
-                set_param(BlockPath,"Capacitance","ModelStruct.Cr(" + i + ")");
-                set_param(BlockPath,"Measurements","Branch voltage and current");
-                set_param(BlockPath,"Setx0","on");
+                set_param(BlockPath,"c","ModelStruct.Cr(" + i + ")");
                 Index = find(THeader == ModelStruct.NodeNameEffective(i));
                 VariableName = "Tdata(1," + Index + ")";
-                set_param(BlockPath,"InitialVoltage",VariableName);
+                set_param(BlockPath,"vc_specify","on");
+                set_param(BlockPath,"vc_priority","High");
+                set_param(BlockPath,"vc",VariableName);
                 % set the block position
                 if ~exist('Position','var')
                     Position = [0,0];
@@ -175,7 +166,7 @@ function ModelStruct = ResultToPowergui(ModelStruct)
                 Name = "Ground-C-" + ModelStruct.NodeNameEffective(i);
                 CName = "C-" + ModelStruct.NodeNameEffective(i);
                 BlockPath = SimulinkName + "/" + Name;
-                BlockLib = "sps_lib/Utilities/Ground";
+                BlockLib = "fl_lib/Electrical/Electrical Elements/Electrical Reference";
                 try
                     add_block(BlockLib, BlockPath);
                 catch
@@ -190,13 +181,11 @@ function ModelStruct = ResultToPowergui(ModelStruct)
                 GPosition = CPosition + [0,100,0,100];
                 set_param(BlockPath,"Position",GPosition);
             end
-        % Voltage measuremens for Capacitors (Copy VM from Example_1/VM)
+        % Voltage measuremens for Capacitors
             for i = 1:length(ModelStruct.NodeNameEffective)
                 Name = "VolMea-C-" + ModelStruct.NodeNameEffective(i);
-                ExampleBlockName = "VM";
                 BlockPath = SimulinkName + "/" + Name;
-                % BlockLib = "sps_lib/Sensors and Measurements/Voltage Measurement";
-                BlockLib = Example_1Name + "/" + ExampleBlockName;
+                BlockLib = "fl_lib/Electrical/Electrical Sensors/Voltage Sensor";
                 try
                     add_block(BlockLib, BlockPath);
                 catch
@@ -214,13 +203,33 @@ function ModelStruct = ResultToPowergui(ModelStruct)
                 % rotate the block to the left
                 set_param(BlockPath,"Orientation","left");
             end
-        % Data Store Write for Capacitors (Cope from Example_1/DSW)
+        % PS-Simulink converters for voltage measurements
+            for i = 1:length(ModelStruct.NodeNameEffective)
+                Name = "PSS-C-" + ModelStruct.NodeNameEffective(i);
+                BlockPath = SimulinkName + "/" + Name;
+                BlockLib = "nesl_utility/PS-Simulink Converter";
+                try
+                    add_block(BlockLib, BlockPath);
+                catch
+
+                end
+                set_param(BlockPath,"Unit","V");
+                CName = "C-" + ModelStruct.NodeNameEffective(i);
+                CPosition = get_param(SimulinkName + "/" + CName,"Position");
+                CPosition = [CPosition(1),CPosition(2)];
+                OriginalSize = get_param(BlockPath,"Position");
+                OriginalSize = [OriginalSize(3)-OriginalSize(1),OriginalSize(4)-OriginalSize(2)];
+                BlockSize = OriginalSize;
+                ConverterPosition = CPosition + [-100,0];
+                Rect = [ConverterPosition,ConverterPosition + BlockSize];
+                set_param(BlockPath,"Position",Rect);
+                set_param(BlockPath,"Orientation","left");
+            end
+        % Data Store Write for Capacitors
             for i = 1:length(ModelStruct.NodeNameEffective)
                 Name = "DSW-C-" + ModelStruct.NodeNameEffective(i);
-                ExampleBlockName = "DSW";
                 BlockPath = SimulinkName + "/" + Name;
-                % BlockLib = "sps_lib/Utilities/Data Store Write";
-                BlockLib = Example_1Name + "/" + ExampleBlockName;
+                BlockLib = "simulink/Signal Routing/Data Store Write";
                 try
                     add_block(BlockLib, BlockPath);
                 catch
@@ -233,7 +242,7 @@ function ModelStruct = ResultToPowergui(ModelStruct)
                 CName = "C-" + ModelStruct.NodeNameEffective(i);
                 CPosition = get_param(SimulinkName + "/" + CName,"Position");
                 CPosition = [CPosition(1),CPosition(2)];
-                DataStoreWritePosition = CPosition + [-100,0];
+                DataStoreWritePosition = CPosition + [-200,0];
                 OriginalSize = get_param(BlockPath,"Position");
                 OriginalSize = [OriginalSize(3)-OriginalSize(1),OriginalSize(4)-OriginalSize(2)];
                 BlockSize = OriginalSize;
@@ -243,11 +252,10 @@ function ModelStruct = ResultToPowergui(ModelStruct)
                 set_param(BlockPath,"Orientation","left");
             end
 
-        % Data Store Read (Cope from Example_1/DSR)
+        % Data Store Read
             Name = "DSR";
-            ExampleBlockName = "DSR";
             BlockPath = SimulinkName + "/" + Name;
-            BlockLib = Example_1Name + "/" + ExampleBlockName;
+            BlockLib = "simulink/Signal Routing/Data Store Read";
             try
                 add_block(BlockLib, BlockPath);
             catch
@@ -265,11 +273,10 @@ function ModelStruct = ResultToPowergui(ModelStruct)
             set_param(BlockPath,"Position",Rect);
 
 
-        % Scope connected to Data Store Read (Copy from Example_1/Scope)
+        % Scope connected to Data Store Read
             Name = "ScopeDSR";
-            ExampleBlockName = "Scope";
             BlockPath = SimulinkName + "/" + Name;
-            BlockLib = Example_1Name + "/" + ExampleBlockName;
+            BlockLib = "simulink/Sinks/Scope";
             try
                 add_block(BlockLib, BlockPath);
             catch
@@ -285,20 +292,36 @@ function ModelStruct = ResultToPowergui(ModelStruct)
             Rect = [ScopePosition,ScopePosition + BlockSize];
             set_param(BlockPath,"Position",Rect);
 
+        % To Workspace connected to Data Store Read
+            Name = "CauerDataToWorkspace";
+            BlockPath = SimulinkName + "/" + Name;
+            BlockLib = "simulink/Sinks/To Workspace";
+            try
+                add_block(BlockLib, BlockPath);
+            catch
+
+            end
+            set_param(BlockPath,"VariableName","CauerScopeData");
+            set_param(BlockPath,"SaveFormat","StructureWithTime");
+            ToWorkspacePosition = Position + [100,260];
+            OriginalSize = get_param(BlockPath,"Position");
+            OriginalSize = [OriginalSize(3)-OriginalSize(1),OriginalSize(4)-OriginalSize(2)];
+            BlockSize = OriginalSize;
+            Rect = [ToWorkspacePosition,ToWorkspacePosition + BlockSize];
+            set_param(BlockPath,"Position",Rect);
 
         % Resistors
             for i = 1:size(ModelStruct.GrName,1)
                 Name = "R-(" + ModelStruct.GrName(i,1) + "," + ModelStruct.GrName(i,2) + ")";
                 BlockPath = SimulinkName + "/" + Name;
-                BlockLib = "sps_lib/Passives/Series RLC Branch";
+                BlockLib = "fl_lib/Electrical/Electrical Elements/Resistor";
                 try
                     add_block(BlockLib, BlockPath);
                 catch
                     
                 end
                 % set the block parameters
-                set_param(BlockPath,"BranchType","R");
-                set_param(BlockPath,"Resistance","1/ModelStruct.Gr(" + i + ")");
+                set_param(BlockPath,"R","1/ModelStruct.Gr(" + i + ")");
                 % set the block position
                 if ismember(ModelStruct.GrName(i,1),ModelStruct.NodeNameEffective)
                     CName1 = "C-" + ModelStruct.GrName(i,1);
@@ -337,7 +360,7 @@ function ModelStruct = ResultToPowergui(ModelStruct)
                 if Layer ~= 1
                     continue;
                 end
-                BlockLib = "sps_lib/Sources/Controlled Current Source";
+                BlockLib = "fl_lib/Electrical/Electrical Sources/Controlled Current Source";
                 try
                     add_block(BlockLib, BlockPath);
                 catch
@@ -353,7 +376,7 @@ function ModelStruct = ResultToPowergui(ModelStruct)
             % Add the grounds for CCS
                 Name = "Ground-CCS-" + ModelStruct.NodeNameEffective(i);
                 BlockPath = SimulinkName + "/" + Name;
-                BlockLib = "sps_lib/Utilities/Ground";
+                BlockLib = "fl_lib/Electrical/Electrical Elements/Electrical Reference";
                 try
                     add_block(BlockLib, BlockPath);
                 catch
@@ -383,6 +406,19 @@ function ModelStruct = ResultToPowergui(ModelStruct)
                 PositionCCSInput = PositionCCS + [0,-100,-50,-150];
                 set_param(BlockPath,"Position",PositionCCSInput);
                 set_param(BlockPath,"Orientation","down");
+            % Add the Simulink-PS converter for CCS input
+                Name = "SPS-CCS-" + ModelStruct.NodeNameEffective(i);
+                BlockPath = SimulinkName + "/" + Name;
+                BlockLib = "nesl_utility/Simulink-PS Converter";
+                try
+                    add_block(BlockLib, BlockPath);
+                catch
+
+                end
+                set_param(BlockPath,"Unit","A");
+                PositionCCSInput = PositionCCS + [0,-50,-50,-100];
+                set_param(BlockPath,"Position",PositionCCSInput);
+                set_param(BlockPath,"Orientation","down");
             end
         % CVS,Grounds for CVS,CVS Inputs
             for i = 1:length(ModelStruct.NodeName)
@@ -392,7 +428,7 @@ function ModelStruct = ResultToPowergui(ModelStruct)
                 end
                 Name = "CVS-" + ModelStruct.NodeName(i);
                 BlockPath = SimulinkName + "/" + Name;
-                BlockLib = "sps_lib/Sources/Controlled Voltage Source";
+                BlockLib = "fl_lib/Electrical/Electrical Sources/Controlled Voltage Source";
                 try
                     add_block(BlockLib, BlockPath);
                 catch
@@ -416,7 +452,7 @@ function ModelStruct = ResultToPowergui(ModelStruct)
             % Add the grounds for CVS
                 Name = "Ground-CVS-" + ModelStruct.NodeName(i);
                 BlockPath = SimulinkName + "/" + Name;
-                BlockLib = "sps_lib/Utilities/Ground";
+                BlockLib = "fl_lib/Electrical/Electrical Elements/Electrical Reference";
                 try
                     add_block(BlockLib, BlockPath);
                 catch
@@ -444,6 +480,19 @@ function ModelStruct = ResultToPowergui(ModelStruct)
                 set_param(BlockPath,"OutputAfterFinalValue","Holding final value");
                 % set the block position
                 PositionCVSInput = PositionCVS + [0,150,-50,100];
+                set_param(BlockPath,"Position",PositionCVSInput);
+                set_param(BlockPath,"Orientation","up");
+            % Add the Simulink-PS converter for CVS input
+                Name = "SPS-CVS-" + ModelStruct.NodeName(i);
+                BlockPath = SimulinkName + "/" + Name;
+                BlockLib = "nesl_utility/Simulink-PS Converter";
+                try
+                    add_block(BlockLib, BlockPath);
+                catch
+
+                end
+                set_param(BlockPath,"Unit","V");
+                PositionCVSInput = PositionCVS + [0,100,-50,50];
                 set_param(BlockPath,"Position",PositionCVSInput);
                 set_param(BlockPath,"Orientation","up");
             end
@@ -482,6 +531,9 @@ function ModelStruct = ResultToPowergui(ModelStruct)
                 GName = "Ground-C-" + ModelStruct.NodeNameEffective(i);
                 try
                     add_line(SimulinkName,CName + "/RConn1",GName + "/LConn1");
+                    if i == 1
+                        add_line(SimulinkName,"Solver Configuration/RConn1",GName + "/LConn1");
+                    end
                 catch 
                 end
             end
@@ -491,24 +543,28 @@ function ModelStruct = ResultToPowergui(ModelStruct)
                 VName = "VolMea-C-" + ModelStruct.NodeNameEffective(i);
                 try
                     add_line(SimulinkName,CName + "/LConn1",VName + "/LConn1");
-                    add_line(SimulinkName,CName + "/RConn1",VName + "/LConn2");
+                    add_line(SimulinkName,CName + "/RConn1",VName + "/RConn2");
                 catch 
                 end
             end
         % Connect Voltage measuremens and Data Store Write
             for i = 1:length(ModelStruct.NodeNameEffective)
                 VName = "VolMea-C-" + ModelStruct.NodeNameEffective(i);
+                PSSName = "PSS-C-" + ModelStruct.NodeNameEffective(i);
                 DSName = "DSW-C-" + ModelStruct.NodeNameEffective(i);
                 try
-                    add_line(SimulinkName,VName + "/1",DSName + "/1");
+                    add_line(SimulinkName,VName + "/RConn1",PSSName + "/LConn1");
+                    add_line(SimulinkName,PSSName + "/1",DSName + "/1");
                 catch 
                 end
             end
         % Connect Data Store Read and Scope
             DSName = "DSR";
             ScopeName = "ScopeDSR";
+            ToWorkspaceName = "CauerDataToWorkspace";
             try
                 add_line(SimulinkName,DSName + "/1",ScopeName + "/1");
+                add_line(SimulinkName,DSName + "/1",ToWorkspaceName + "/1");
             catch 
             end
 
@@ -518,7 +574,7 @@ function ModelStruct = ResultToPowergui(ModelStruct)
                 GName = "Ground-CCS-" + ModelStruct.NodeName(i);
                 if ismember(SimulinkName + "/" + CCSName,AllBlocks)
                     try
-                        add_line(SimulinkName,CCSName + "/LConn1",GName + "/LConn1");
+                        add_line(SimulinkName,CCSName + "/RConn2",GName + "/LConn1");
                     catch 
                     end
                 end
@@ -527,9 +583,11 @@ function ModelStruct = ResultToPowergui(ModelStruct)
             for i = 1:length(ModelStruct.NodeName)
                 CCSName = "CCS-" + ModelStruct.NodeName(i);
                 CCSInputName = "CCSInput-" + ModelStruct.NodeName(i);
+                SPSName = "SPS-CCS-" + ModelStruct.NodeName(i);
                 if ismember(SimulinkName + "/" + CCSName,AllBlocks)
                     try
-                        add_line(SimulinkName,CCSInputName + "/1",CCSName + "/1");
+                        add_line(SimulinkName,CCSInputName + "/1",SPSName + "/1");
+                        add_line(SimulinkName,SPSName + "/RConn1",CCSName + "/RConn1");
                     catch 
                     end
                 end
@@ -540,7 +598,7 @@ function ModelStruct = ResultToPowergui(ModelStruct)
                 GName = "Ground-CVS-" + ModelStruct.NodeName(i);
                 if ismember(SimulinkName + "/" + CVSName,AllBlocks)
                     try
-                        add_line(SimulinkName,CVSName + "/LConn1",GName + "/LConn1");
+                        add_line(SimulinkName,CVSName + "/RConn2",GName + "/LConn1");
                     catch 
                     end
                 end
@@ -549,9 +607,11 @@ function ModelStruct = ResultToPowergui(ModelStruct)
             for i = 1:length(ModelStruct.NodeName)
                 CVSName = "CVS-" + ModelStruct.NodeName(i);
                 CVSInputName = "CVSInput-" + ModelStruct.NodeName(i);
+                SPSName = "SPS-CVS-" + ModelStruct.NodeName(i);
                 if ismember(SimulinkName + "/" + CVSName,AllBlocks)
                     try
-                        add_line(SimulinkName,CVSInputName + "/1",CVSName + "/1");
+                        add_line(SimulinkName,CVSInputName + "/1",SPSName + "/1");
+                        add_line(SimulinkName,SPSName + "/RConn1",CVSName + "/RConn1");
                     catch 
                     end
                 end
@@ -562,7 +622,7 @@ function ModelStruct = ResultToPowergui(ModelStruct)
                 CName = "C-" + ModelStruct.NodeName(i);
                 if ismember(SimulinkName + "/" + CCSName,AllBlocks)
                     try
-                        add_line(SimulinkName,CCSName + "/RConn1",CName + "/LConn1");
+                        add_line(SimulinkName,CCSName + "/LConn1",CName + "/LConn1");
                     catch 
                     end
                 end
@@ -574,36 +634,33 @@ function ModelStruct = ResultToPowergui(ModelStruct)
                 RName = "R-(" + ModelStruct.GrName(i,1) + "," + ModelStruct.GrName(i,2) + ")";
                 if ismember(SimulinkName + "/" + CVSName1,AllBlocks)
                     try
-                        add_line(SimulinkName,CVSName1 + "/RConn1",RName + "/RConn1");
+                        add_line(SimulinkName,CVSName1 + "/LConn1",RName + "/RConn1");
                     catch 
                     end
                 elseif ismember(SimulinkName + "/" + CVSName2,AllBlocks)
                     try
-                        add_line(SimulinkName,CVSName2 + "/RConn1",RName + "/RConn1");
+                        add_line(SimulinkName,CVSName2 + "/LConn1",RName + "/RConn1");
                     catch 
                     end
                 end
             end
         catch ME
-            save_system(SimulinkName,SimulinkName,'OverwriteIfChangedOnDisk',true);
-            close_system(Example_1Name,0);
-            close_system(SimulinkName,0);
-            cd(CurrentDir);
+            if SimulinkName ~= "" && bdIsLoaded(SimulinkName)
+                save_system(SimulinkName,slxPath,'OverwriteIfChangedOnDisk',true);
+                close_system(SimulinkName,0);
+            end
             ErrorMessage = CatchProcess(ME);
             error(ErrorMessage);
         end
     % save
-        save_system(SimulinkName,SimulinkName,'OverwriteIfChangedOnDisk',true);
+        save_system(SimulinkName,slxPath,'OverwriteIfChangedOnDisk',true);
         Out = sim(SimulinkName);
         ModelStruct.Result.CircuitData.Out = Out;
-        close_system(Example_1Name,0);
         close_system(SimulinkName,0);
-    % back to the original folder
-        cd(CurrentDir);
     catch ME
-        close_system(Example_1Name,0);
-        close_system(SimulinkName,0);
-        cd(CurrentDir);
+        if SimulinkName ~= "" && bdIsLoaded(SimulinkName)
+            close_system(SimulinkName,0);
+        end
         ErrorMessage = CatchProcess(ME);
         error(ErrorMessage);
     end

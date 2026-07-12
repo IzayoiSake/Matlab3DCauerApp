@@ -30,14 +30,11 @@ function OutPutCircuit(app,CallerApp)
     % open a progress bar
     f = uiprogressdlg(app.UIFigure, 'Title' , 'Please wait...' , 'Message' , 'Generating circuit...' , ...
     'Cancelable' , 'off' , "Icon" , "info" , "Indeterminate" , "on");
-    CurrentDir = pwd;
     try
         CallerApp.ModelStruct = ResultToPowergui(CallerApp.ModelStruct);
     catch ME
         ErrorMessage = CatchProcess(ME);
-        cd(CurrentDir);
         uialert(app.UIFigure, ErrorMessage, "Error", "Icon", "error");
     end
-    cd(CurrentDir);
     close(f);
 end

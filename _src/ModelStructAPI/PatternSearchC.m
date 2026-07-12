@@ -56,8 +56,6 @@ function [ModelStruct] = PatternSearchC(ModelStruct)
         ModelStruct.Temp.StartNode = StartNode;
         ModelStruct.Temp.EndNode = EndNode;
         ModelStruct.Temp.State = "PatternSearchC() Searching";
-        CurrentDir = pwd;
-        ModelStruct.Temp.CurrentDir = CurrentDir;
         Cr = zeros(length(ModelStruct.NodeNameEffective),1);
         ModelStruct.Temp.Cr = Cr;
         % check 'local' parallel pool
@@ -83,17 +81,6 @@ function [ModelStruct] = PatternSearchC(ModelStruct)
         Ptime = ModelStruct.Temp.Ptime;
         NodeNameEffective = ModelStruct.NodeNameEffective;
         GrName = ModelStruct.GrName;
-        % get current directory
-        if ~isfield(ModelStruct.Temp,"CurrentDir")
-            CurrentDir = pwd;
-            ModelStruct.Temp.CurrentDir = CurrentDir;
-        else
-            CurrentDir = ModelStruct.Temp.CurrentDir;
-        end
-        % change the directory to the slxDir
-        if ~strcmp(slxDir,"")
-            cd(slxDir);
-        end
         if EndNode<length(NodeNameEffective)
             if StartNode == EndNode+1
                 EndNode = StartNode+ParPoolNum-1;
@@ -102,10 +89,8 @@ function [ModelStruct] = PatternSearchC(ModelStruct)
                 EndNode=length(NodeNameEffective);
             end
             CrTemp=zeros(length(ModelStruct.NodeNameEffective),1);
-            if exist("slxDir","var") && ~strcmp(slxDir,"")
-                slxDirEx = 1;
-            else
-                slxDirEx = 0;
+            if ~exist("slxDir","var") || strcmp(slxDir,"")
+                slxDir = pwd;
             end
             NodeLink = ModelStruct.NodeLink;
             Gr = ModelStruct.Gr;
@@ -140,11 +125,7 @@ function [ModelStruct] = PatternSearchC(ModelStruct)
                     % Calculate C
                     Message = Message + "Calculating C(" + ThisNodeName + ")" + newline;
                     % Remainder = mod(i,ParPoolNum);
-                    if slxDirEx
-                        slxFilePath = fullfile(slxDir,"PatternSearch"+string(i)+".slx");
-                    else
-                        slxFilePath = "PatternSearch" + string(i)+".slx";
-                    end
+                    slxFilePath = fullfile(slxDir,"PatternSearch"+string(i)+".slx");
                     CrTemp(i) = SimulinkOperation(Exp_T,R,P,Ptime,T,Ttime,slxFilePath,StepSize);
                     % close all the simulink files named starting with "PatternSearch"
                     close_system("PatternSearch" + string(i), 0);
@@ -156,7 +137,6 @@ function [ModelStruct] = PatternSearchC(ModelStruct)
                 end
             end
             ModelStruct.Message = Message;
-            cd(CurrentDir);
             for i = StartNode:EndNode
                 ModelStruct.Temp.Cr(i) = CrTemp(i);
             end

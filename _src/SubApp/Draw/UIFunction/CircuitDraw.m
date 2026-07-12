@@ -4,12 +4,13 @@ function CircuitDraw(app)
     CheckBoxToNodeSelect(app);
     ModelStruct = app.CallerApp.ModelStruct;
     try
-        ModelStruct.Result.CircuitResultPath;
+        SlxPath = ModelStruct.Result.CircuitResultPath;
         ModelStruct.Result.TransTemptPath;
         ModelStruct.Result.TransPowerPath;
-        Out = ModelStruct.Result.CircuitData.Out;
-        CauerValue = Out.ScopeData.signals.values;
-        Time = Out.ScopeData.time(:);
+        Out = GetCircuitSimulationOutput(SlxPath,ModelStruct);
+        ModelStruct.Result.CircuitData.Out = Out;
+        app.CallerApp.ModelStruct = ModelStruct;
+        [Time,CauerValue] = GetCauerOutput(Out);
         THeader = ModelStruct.Result.CircuitData.THeader;
         TData = ModelStruct.Result.CircuitData.TData;
         Ttime = ModelStruct.Result.CircuitData.Ttime;
@@ -35,7 +36,7 @@ function CircuitDraw(app)
                 Figure1Value(:, DrawPointer) = fit(Time);
                 [ThisPos,ThisLay] = GetNodePosAndLay(ThisNodeName);
                 Figure1Legend{1, DrawPointer} = "FFE: " + "P" + "(" + ThisPos + "," + ThisLay + ")";
-                Figure1Value(:, DrawPointer + DrawNum) = CauerValue(i, 1, :);
+                Figure1Value(:, DrawPointer + DrawNum) = CauerValue(:, i);
                 Figure1Legend{1, DrawPointer + DrawNum} = "3D Cauer: " + "P" + "(" + ThisPos + "," + ThisLay + ")";
                 Figure2Value(:, DrawPointer) = (Figure1Value(:, DrawPointer) - Figure1Value(:, DrawPointer + DrawNum));
                 Figure2Legend{1, DrawPointer} = "P" + "(" + ThisPos + "," + ThisLay + ")";
@@ -44,9 +45,16 @@ function CircuitDraw(app)
         end
         figure( 'Name' , 'Temperature' , 'NumberTitle' , 'off' );
         SetFigure();
-        line = plot(Time, Figure1Value(:, 1:DrawNum), "LineStyle", "-");
+        FFELines = plot(Time, Figure1Value(:, 1:DrawNum), "LineStyle", "-");
+        NodeColors = zeros(DrawNum,3);
+        for i = 1:DrawNum
+            NodeColors(i,:) = FFELines(i).Color;
+        end
         hold on;
-        line = plot(Time, Figure1Value(:, DrawNum+1:end), "LineStyle", "--");
+        CauerLines = plot(Time, Figure1Value(:, DrawNum+1:end), "LineStyle", "--");
+        for i = 1:DrawNum
+            CauerLines(i).Color = NodeColors(i,:);
+        end
         hold off;
         legend(Figure1Legend);
         xlabel( 'Time (s)' );
@@ -54,7 +62,10 @@ function CircuitDraw(app)
         title( 'FFE and 3D Cauer Comparison' );
         figure( 'Name' , 'Error' , 'NumberTitle' , 'off' );
         SetFigure();
-        plot(Time, Figure2Value);
+        ErrorLines = plot(Time, Figure2Value);
+        for i = 1:DrawNum
+            ErrorLines(i).Color = NodeColors(i,:);
+        end
         legend(Figure2Legend);
         xlabel( 'Time (s)' );
         ylabel( 'Temperature Error (℃)' );
@@ -66,6 +77,57 @@ function CircuitDraw(app)
         return;
     end
     f.close();
+end
+
+function Out = GetCircuitSimulationOutput(SlxPath,ModelStruct)
+    try
+        Out = ModelStruct.Result.CircuitData.Out;
+        GetCauerOutput(Out);
+        return;
+    catch
+    end
+    if ~exist(SlxPath,'file')
+        error("Circuit result SLX file does not exist.");
+    end
+    [~,SimulinkName,~] = fileparts(SlxPath);
+    WasLoaded = bdIsLoaded(SimulinkName);
+    if ~WasLoaded
+        load_system(SlxPath);
+    end
+    Out = sim(SimulinkName);
+    if ~WasLoaded && bdIsLoaded(SimulinkName)
+        close_system(SimulinkName,0);
+    end
+end
+
+function [Time,CauerValue] = GetCauerOutput(Out)
+    try
+        Data = Out.CauerScopeData;
+    catch
+        Data = Out.ScopeData;
+    end
+    if isa(Data,'timeseries')
+        Time = Data.Time(:);
+        Values = Data.Data;
+    else
+        Time = Data.time(:);
+        Values = Data.signals.values;
+    end
+    CauerValue = NormalizeCauerValue(Values,numel(Time));
+end
+
+function CauerValue = NormalizeCauerValue(Values,TimeNum)
+    Values = double(Values);
+    if size(Values,1) == TimeNum
+        CauerValue = reshape(Values,TimeNum,[]);
+    elseif ndims(Values) >= 3 && size(Values,3) == TimeNum
+        CauerValue = permute(Values,[3,1,2]);
+        CauerValue = reshape(CauerValue,TimeNum,[]);
+    elseif size(Values,2) == TimeNum
+        CauerValue = reshape(Values',TimeNum,[]);
+    else
+        CauerValue = reshape(Values,TimeNum,[]);
+    end
 end
 
 

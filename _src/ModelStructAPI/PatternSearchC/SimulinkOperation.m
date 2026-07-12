@@ -70,28 +70,18 @@ function Cr = SimulinkOperation(Exp_T,R,P,Ptime,T,Ttime,slxFilePath,StepSize)
 % add and set the blocks
 % get all the blocks needed
     NeedBlocks = [];
-% powergui
-    % add the powergui block
-    Name = "powergui";
+% Simscape solver
+    % add the Solver Configuration block
+    Name = "Solver Configuration";
     PathName = FileName + "/" + Name;
     try
-        add_block("spspowerguiLib/powergui", PathName);
+        add_block("nesl_utility/Solver Configuration", PathName);
     catch
 
     end
-    % set the SimulationMode
-    if strcmp(get_param(PathName,"SimulationMode"),"Continuous")
-    else
-        set_param(PathName,"SimulationMode","Continuous");
-    end
-    % set the SampleTime
-    try
-        if strcmp(get_param(PathName,"SampleTime"),"StepSize")
-        else
-            set_param(PathName,"SampleTime","StepSize");
-        end
-    catch
-    end
+    set_param(PathName,"UseLocalSolver","on");
+    set_param(PathName,"LocalSolverChoice","NE_TRAPEZOIDAL_ADVANCER");
+    set_param(PathName,"LocalSolverSampleTime","StepSize");
     % set the position
     if ~exist('Position','var')
         Position = [0,0,100,100];
@@ -105,11 +95,10 @@ function Cr = SimulinkOperation(Exp_T,R,P,Ptime,T,Ttime,slxFilePath,StepSize)
     Name = "CCS";
     PathName = FileName + "/"+Name;
     try
-        add_block("sps_lib/Sources/Controlled Current Source", PathName);
+        add_block("fl_lib/Electrical/Electrical Sources/Controlled Current Source", PathName);
     catch
 
     end
-    set_param(PathName,"Initialize","off");
     % set the position
     if ~exist('Position','var')
         Position = [0,0,100,100];
@@ -136,11 +125,24 @@ function Cr = SimulinkOperation(Exp_T,R,P,Ptime,T,Ttime,slxFilePath,StepSize)
     end
     set_param(PathName,"Position",PositionW);
     NeedBlocks = [NeedBlocks;PathName];
+% CCS Simulink-PS Converter
+    Name = "CCS Simulink-PS Converter";
+    PathName = FileName + "/" + Name;
+    try
+        add_block("nesl_utility/Simulink-PS Converter", PathName);
+    catch
+
+    end
+    set_param(PathName,"Unit","A");
+    PositionW = get_param(FileName + "/" + "CCS From Workspace","Position");
+    PositionW = PositionW + [100,0,100,0];
+    set_param(PathName,"Position",PositionW);
+    NeedBlocks = [NeedBlocks;PathName];
 % Ground for CCS
     Name = "Ground for CCS";
     PathName = FileName + "/" + Name;
     try
-        add_block("sps_lib/Utilities/Ground", PathName);
+        add_block("fl_lib/Electrical/Electrical Elements/Electrical Reference", PathName);
     catch
 
     end
@@ -156,20 +158,16 @@ function Cr = SimulinkOperation(Exp_T,R,P,Ptime,T,Ttime,slxFilePath,StepSize)
     Name = "C";
     PathName = FileName + "/" + Name;
     try
-        add_block("sps_lib/Passives/Series RLC Branch", PathName);
+        add_block("fl_lib/Electrical/Electrical Elements/Capacitor", PathName);
     catch
 
     end
-    % set the BranchType
-    BranchType = get_param(PathName,"BranchType");
-    if ~strcmp(BranchType,"C")
-        set_param(PathName,"BranchType","C");
-    end
     % set the C
-    set_param(PathName,"Capacitance","C");
+    set_param(PathName,"c","C");
     % set the initial voltage of the capacitor
-    set_param(PathName,"Setx0","on");
-    set_param(PathName,"InitialVoltage","Exp_T(1)");
+    set_param(PathName,"vc_specify","on");
+    set_param(PathName,"vc_priority","High");
+    set_param(PathName,"vc","Exp_T(1)");
     % set the position
     if ~exist('Position','var')
         Position = [0,0,100,100];
@@ -187,17 +185,12 @@ function Cr = SimulinkOperation(Exp_T,R,P,Ptime,T,Ttime,slxFilePath,StepSize)
         Name = "R" + string(i);
         PathName = FileName + "/" + Name;
         try
-            add_block("sps_lib/Passives/Series RLC Branch", PathName);
+            add_block("fl_lib/Electrical/Electrical Elements/Resistor", PathName);
         catch
 
         end
-        % set the BranchType
-        BranchType = get_param(PathName,"BranchType");
-        if ~strcmp(BranchType,"R")
-            set_param(PathName,"BranchType","R");
-        end
         % set the R
-        set_param(PathName,"Resistance","R(" + string(i) + ")");
+        set_param(PathName,"R","R(" + string(i) + ")");
         % set the position
         if ~exist('Position','var')
             Position = [0,0,100,100];
@@ -213,11 +206,10 @@ function Cr = SimulinkOperation(Exp_T,R,P,Ptime,T,Ttime,slxFilePath,StepSize)
         Name = "CVS" + string(i);
         PathName = FileName + "/" + Name;
         try
-            add_block("sps_lib/Sources/Controlled Voltage Source", PathName);
+            add_block("fl_lib/Electrical/Electrical Sources/Controlled Voltage Source", PathName);
         catch
 
         end
-        set_param(PathName,"Initialize","off");
         % set the position
         if ~exist('Position','var')
             Position = [0,0,100,100];
@@ -244,12 +236,25 @@ function Cr = SimulinkOperation(Exp_T,R,P,Ptime,T,Ttime,slxFilePath,StepSize)
         end
         set_param(PathName,"Position",PositionW);
         NeedBlocks = [NeedBlocks;PathName];
+    % CVS Simulink-PS Converter
+        Name = "CVS Simulink-PS Converter" + string(i);
+        PathName = FileName + "/" + Name;
+        try
+            add_block("nesl_utility/Simulink-PS Converter", PathName);
+        catch
+
+        end
+        set_param(PathName,"Unit","V");
+        PositionW = get_param(FileName + "/" + "CVS From Workspace" + string(i),"Position");
+        PositionW = PositionW + [100,0,100,0];
+        set_param(PathName,"Position",PositionW);
+        NeedBlocks = [NeedBlocks;PathName];
     end
 % Ground for CVS
     Name = "Ground for CVS";
     PathName = FileName + "/" + Name;
     try
-        add_block("sps_lib/Utilities/Ground", PathName);
+        add_block("fl_lib/Electrical/Electrical Elements/Electrical Reference", PathName);
     catch
 
     end
@@ -267,7 +272,7 @@ function Cr = SimulinkOperation(Exp_T,R,P,Ptime,T,Ttime,slxFilePath,StepSize)
     Name = "Voltage Measurement";
     PathName = FileName + "/" + Name;
     try
-        add_block("sps_lib/Sensors and Measurements/Voltage Measurement", PathName);
+        add_block("fl_lib/Electrical/Electrical Sensors/Voltage Sensor", PathName);
     catch
 
     end
@@ -280,7 +285,7 @@ function Cr = SimulinkOperation(Exp_T,R,P,Ptime,T,Ttime,slxFilePath,StepSize)
     Name = "Ground for Voltage Measurement";
     PathName = FileName + "/" + Name;
     try
-        add_block("sps_lib/Utilities/Ground", PathName);
+        add_block("fl_lib/Electrical/Electrical Elements/Electrical Reference", PathName);
     catch
 
     end
@@ -290,6 +295,19 @@ function Cr = SimulinkOperation(Exp_T,R,P,Ptime,T,Ttime,slxFilePath,StepSize)
     set_param(PathName,"Position",PositionG);
     % Set the direction of the ground facing up
     set_param(PathName,"Orientation","down");
+    NeedBlocks = [NeedBlocks;PathName];
+% Voltage Measurement PS-Simulink Converter
+    Name = "Voltage Measurement PS-Simulink Converter";
+    PathName = FileName + "/" + Name;
+    try
+        add_block("nesl_utility/PS-Simulink Converter", PathName);
+    catch
+
+    end
+    set_param(PathName,"Unit","V");
+    PositionW = get_param(FileName + "/" + "Voltage Measurement","Position");
+    PositionW = PositionW + [100,0,100,0];
+    set_param(PathName,"Position",PositionW);
     NeedBlocks = [NeedBlocks;PathName];
 % Output
     Name = "Output";
@@ -314,14 +332,18 @@ function Cr = SimulinkOperation(Exp_T,R,P,Ptime,T,Ttime,slxFilePath,StepSize)
     % initial connection
     allLines = find_system(FileName,"FindAll","on","type","line");
     delete_line(allLines);
-    % "CCS From Workspace/1","CCS/1"
-    add_line(FileName,"CCS From Workspace/1","CCS/1");
+    % "CCS From Workspace/1","CCS Simulink-PS Converter/1"
+    add_line(FileName,"CCS From Workspace/1","CCS Simulink-PS Converter/1");
+    % "CCS Simulink-PS Converter/RConn1","CCS/RConn1"
+    add_line(FileName,"CCS Simulink-PS Converter/RConn1","CCS/RConn1");
     % "CCS/LConn1","Ground/LConn1"
-    add_line(FileName,"CCS/LConn1","Ground for CCS/LConn1");
+    add_line(FileName,"CCS/RConn2","Ground for CCS/LConn1");
     % "CCS/RConn1","C/LConn1"
-    add_line(FileName,"CCS/RConn1","C/LConn1");
+    add_line(FileName,"CCS/LConn1","C/LConn1");
     % "C/RConn1","Ground/LConn1"
     add_line(FileName,"C/RConn1","Ground for CCS/LConn1");
+    % "Solver Configuration/RConn1","Ground/LConn1"
+    add_line(FileName,"Solver Configuration/RConn1","Ground for CCS/LConn1");
     % "C/LConn1","R/LConn1"
     try
         for i = 1:RNum
@@ -329,24 +351,27 @@ function Cr = SimulinkOperation(Exp_T,R,P,Ptime,T,Ttime,slxFilePath,StepSize)
         end
     catch
     end
-    % "R/RConn1","CVS/RConn1"
+    % "R/RConn1","CVS/LConn1"
     for i = 1:RNum
-        add_line(FileName,"R" + string(i) + "/RConn1","CVS" + string(i) + "/RConn1");
+        add_line(FileName,"R" + string(i) + "/RConn1","CVS" + string(i) + "/LConn1");
     end
     % "CVS" + string(i) + "/LConn1","Ground/LConn1"
     for i = 1:RNum
-        add_line(FileName,"CVS" + string(i) + "/LConn1","Ground for CVS/LConn1");
+        add_line(FileName,"CVS" + string(i) + "/RConn2","Ground for CVS/LConn1");
     end
-    % "CVS From Workspace/1","CVS/1"
+    % "CVS From Workspace/1","CVS Simulink-PS Converter/1"
     for i = 1:RNum
-        add_line(FileName,"CVS From Workspace" + string(i) + "/1","CVS" + string(i) + "/1");
+        add_line(FileName,"CVS From Workspace" + string(i) + "/1","CVS Simulink-PS Converter" + string(i) + "/1");
+        add_line(FileName,"CVS Simulink-PS Converter" + string(i) + "/RConn1","CVS" + string(i) + "/RConn1");
     end
     % "C/LConn1","Voltage Measurement/LConn1"
     add_line(FileName,"C/LConn1","Voltage Measurement/LConn1");
-    % "Voltage Measurement/LConn2","Ground/LConn1"
-    add_line(FileName,"Voltage Measurement/LConn2","Ground for Voltage Measurement/LConn1");
-    % "Voltage Measurement/1","OutPut/1"
-    add_line(FileName,"Voltage Measurement/1","Output/1");
+    % "Voltage Measurement/RConn2","Ground/LConn1"
+    add_line(FileName,"Voltage Measurement/RConn2","Ground for Voltage Measurement/LConn1");
+    % "Voltage Measurement/RConn1","Voltage Measurement PS-Simulink Converter/LConn1"
+    add_line(FileName,"Voltage Measurement/RConn1","Voltage Measurement PS-Simulink Converter/LConn1");
+    % "Voltage Measurement PS-Simulink Converter/1","OutPut/1"
+    add_line(FileName,"Voltage Measurement PS-Simulink Converter/1","Output/1");
 
 % Begin the Pattern Search
     % 选择需要辨识的模型参数
@@ -356,7 +381,7 @@ function Cr = SimulinkOperation(Exp_T,R,P,Ptime,T,Ttime,slxFilePath,StepSize)
     % 定义仿真数据的测量端口
         Exp_Sig_Output = Simulink.SimulationData.Signal;
         Exp_Sig_Output.Values    = timeseries(Exp_T,Ttime);
-        Exp_Sig_Output.BlockPath = FileName+"/Voltage Measurement";
+        Exp_Sig_Output.BlockPath = FileName+"/Voltage Measurement PS-Simulink Converter";
         Exp_Sig_Output.PortType  = 'outport';
         Exp_Sig_Output.PortIndex = 1;
         Exp_Sig_Output.Name      = 'OutPut';

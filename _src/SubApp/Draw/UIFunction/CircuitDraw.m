@@ -4,20 +4,21 @@ function CircuitDraw(app)
     CheckBoxToNodeSelect(app);
     ModelStruct = app.CallerApp.ModelStruct;
     try
-        SlxPath = ModelStruct.Result.CircuitResultPath;
-        ModelStruct.Result.TransTemptPath;
-        ModelStruct.Result.TransPowerPath;
-        Out = GetCircuitSimulationOutput(SlxPath,ModelStruct);
-        ModelStruct.Result.CircuitData.Out = Out;
+        if ModelStruct.Temp.State ~= "End"
+            error("Parameter identification is not complete.");
+        end
+        [Time,CauerValue] = SimulateCauerStateSpace(ModelStruct);
+        TestData = ModelStruct.Result.TestData;
+        ModelStruct.Result.ComparisonData.Time = Time;
+        ModelStruct.Result.ComparisonData.CauerValue = CauerValue;
         app.CallerApp.ModelStruct = ModelStruct;
-        [Time,CauerValue] = GetCauerOutput(Out);
-        THeader = ModelStruct.Result.CircuitData.THeader;
-        TData = ModelStruct.Result.CircuitData.TData;
-        Ttime = ModelStruct.Result.CircuitData.Ttime;
+        THeader = TestData.THeader;
+        TData = TestData.TData;
+        Ttime = TestData.Ttime;
     catch ME
         f.close();
-        ErrorMessage = "Please Output the Circuit Result First!" ;
-        errordlg(ErrorMessage);
+        ErrorMessage = "请先完成参数辨识并加载测试集数据。" + newline + CatchProcess(ME);
+        uialert(app.UIFigure, ErrorMessage, "无法画图", "Icon", "error");
         return;
     end
     try
@@ -32,8 +33,7 @@ function CircuitDraw(app)
                 ThisNodeName = ModelStruct.NodeNameEffective(i);
                 Index = GetNodeNameIndex(ThisNodeName, THeader);
                 TempValue = TData(:, Index);
-                fit = createFit(Ttime, TempValue);
-                Figure1Value(:, DrawPointer) = fit(Time);
+                Figure1Value(:, DrawPointer) = interp1(Ttime, TempValue, Time, "linear");
                 [ThisPos,ThisLay] = GetNodePosAndLay(ThisNodeName);
                 Figure1Legend{1, DrawPointer} = "FFE: " + "P" + "(" + ThisPos + "," + ThisLay + ")";
                 Figure1Value(:, DrawPointer + DrawNum) = CauerValue(:, i);
@@ -78,58 +78,6 @@ function CircuitDraw(app)
     end
     f.close();
 end
-
-function Out = GetCircuitSimulationOutput(SlxPath,ModelStruct)
-    try
-        Out = ModelStruct.Result.CircuitData.Out;
-        GetCauerOutput(Out);
-        return;
-    catch
-    end
-    if ~exist(SlxPath,'file')
-        error("Circuit result SLX file does not exist.");
-    end
-    [~,SimulinkName,~] = fileparts(SlxPath);
-    WasLoaded = bdIsLoaded(SimulinkName);
-    if ~WasLoaded
-        load_system(SlxPath);
-    end
-    Out = sim(SimulinkName);
-    if ~WasLoaded && bdIsLoaded(SimulinkName)
-        close_system(SimulinkName,0);
-    end
-end
-
-function [Time,CauerValue] = GetCauerOutput(Out)
-    try
-        Data = Out.CauerScopeData;
-    catch
-        Data = Out.ScopeData;
-    end
-    if isa(Data,'timeseries')
-        Time = Data.Time(:);
-        Values = Data.Data;
-    else
-        Time = Data.time(:);
-        Values = Data.signals.values;
-    end
-    CauerValue = NormalizeCauerValue(Values,numel(Time));
-end
-
-function CauerValue = NormalizeCauerValue(Values,TimeNum)
-    Values = double(Values);
-    if size(Values,1) == TimeNum
-        CauerValue = reshape(Values,TimeNum,[]);
-    elseif ndims(Values) >= 3 && size(Values,3) == TimeNum
-        CauerValue = permute(Values,[3,1,2]);
-        CauerValue = reshape(CauerValue,TimeNum,[]);
-    elseif size(Values,2) == TimeNum
-        CauerValue = reshape(Values',TimeNum,[]);
-    else
-        CauerValue = reshape(Values,TimeNum,[]);
-    end
-end
-
 
 function SetFigure()
     % 设置字体""Times New Roman"

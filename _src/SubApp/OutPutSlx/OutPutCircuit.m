@@ -24,6 +24,14 @@ function OutPutCircuit(app,CallerApp)
     CallerApp.ModelStruct.Result.CircuitResultPath = SlxPath;
     CallerApp.ModelStruct.Result.TransTemptPath = string(app.TransTemptTextArea.Value);
     CallerApp.ModelStruct.Result.TransPowerPath = string(app.TransPowerTextArea.Value);
+    try
+        CallerApp.ModelStruct = PrepareTransientTestData(CallerApp.ModelStruct, ...
+            CallerApp.ModelStruct.Result.TransTemptPath, ...
+            CallerApp.ModelStruct.Result.TransPowerPath);
+    catch ME
+        uialert(app.UIFigure, CatchProcess(ME), "Test Data Error", "Icon", "error");
+        return;
+    end
     if ~exist(PathName, 'dir')
         mkdir(PathName);
     end

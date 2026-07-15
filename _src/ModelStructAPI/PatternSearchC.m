@@ -1,17 +1,10 @@
 function [ModelStruct] = PatternSearchC(ModelStruct)
 % This function is used to perform the pattern search algorithm for the C
 % 1: initialize Message
-    slxDir = ModelStruct.Temp.slxDir;
     ParPoolNum = ModelStruct.Temp.ParPoolNum;
     StepSize = ModelStruct.Temp.StepSize;
 % 2: check the inputs
     if ModelStruct.Temp.State == "PatternSearchC() Start"
-        if ~strcmp(slxDir,"")
-            if ~exist(slxDir,"dir")
-                % create the directory
-                mkdir(slxDir);
-            end
-        end
         ModelStruct.Temp.State = "PatternSearchC() Reading Files";
         ModelStruct.Message = ModelStruct.Message + "PatternSearchC begins." + newline;
         return
@@ -80,7 +73,6 @@ function [ModelStruct] = PatternSearchC(ModelStruct)
         Ppower = ModelStruct.Temp.Ppower;
         Ptime = ModelStruct.Temp.Ptime;
         NodeNameEffective = ModelStruct.NodeNameEffective;
-        GrName = ModelStruct.GrName;
         if EndNode<length(NodeNameEffective)
             if StartNode == EndNode+1
                 EndNode = StartNode+ParPoolNum-1;
@@ -89,21 +81,24 @@ function [ModelStruct] = PatternSearchC(ModelStruct)
                 EndNode=length(NodeNameEffective);
             end
             CrTemp=zeros(length(ModelStruct.NodeNameEffective),1);
-            if ~exist("slxDir","var") || strcmp(slxDir,"")
-                slxDir = pwd;
-            end
             NodeLink = ModelStruct.NodeLink;
             Gr = ModelStruct.Gr;
             GrName = ModelStruct.GrName;
             Message = ModelStruct.Message;
             parfor i = StartNode:EndNode
+                ThisNodeName = NodeNameEffective(i);
                 try
-                    Exp_TIndex = find(strcmp(THeader,NodeNameEffective(i)));
+                    Exp_TIndex = find(strcmp(THeader,ThisNodeName));
+                    if ~isscalar(Exp_TIndex)
+                        error("Temperature data must contain exactly one column for " + ThisNodeName + ".");
+                    end
                     Exp_T = Ttempt(:,Exp_TIndex);
-                    PIndex = find(strcmp(PHeader,NodeNameEffective(i)));
+                    PIndex = find(strcmp(PHeader,ThisNodeName));
+                    if ~isscalar(PIndex)
+                        error("Power data must contain exactly one column for " + ThisNodeName + ".");
+                    end
                     P = Ppower(:,PIndex);
                     % find all the resistors connected to this node
-                    ThisNodeName = NodeNameEffective(i);
                     ThisNodeLink = NodeLink{i};
                     ThisNodeLink = string(ThisNodeLink);
                     GrIndex = zeros(length(ThisNodeLink),1);
@@ -114,23 +109,30 @@ function [ModelStruct] = PatternSearchC(ModelStruct)
                         end
                     end
                     GrNeed = Gr(GrIndex);
+                    if any(~isfinite(GrNeed))
+                        error("The fitted thermal conductance of " + ThisNodeName + " contains NaN or Inf.");
+                    end
+                    if any(GrNeed < 0)
+                        error("The fitted thermal conductance of " + ThisNodeName + " must not be negative.");
+                    end
+                    % A zero conductance is an open thermal branch and does not
+                    % participate in the transient temperature calculation.
+                    ActiveLink = GrNeed > 0;
+                    GrNeed = GrNeed(ActiveLink);
+                    ThisNodeLink = ThisNodeLink(ActiveLink);
                     R = 1./GrNeed;
-                    GrNameNeed = GrName(GrIndex,:);
                     % find the Tempterature of the Linked Nodes
-                    T = zeros(length(Ttime),length(ThisNodeLink));
                     % find the index of the linked nodes in the THeader
                     [~,TIndex] = ismember(ThisNodeLink,THeader);
+                    if any(TIndex == 0)
+                        error("Temperature data is missing one or more nodes linked to " + ThisNodeName + ".");
+                    end
                     % Get the Tdata of the linked nodes
                     T = Ttempt(:,TIndex);
                     % Calculate C
                     Message = Message + "Calculating C(" + ThisNodeName + ")" + newline;
-                    % Remainder = mod(i,ParPoolNum);
-                    slxFilePath = fullfile(slxDir,"PatternSearch"+string(i)+".slx");
-                    CrTemp(i) = SimulinkOperation(Exp_T,R,P,Ptime,T,Ttime,slxFilePath,StepSize);
-                    % close all the simulink files named starting with "PatternSearch"
-                    close_system("PatternSearch" + string(i), 0);
+                    CrTemp(i) = MatlabOperation(Exp_T,R,P,Ptime,T,Ttime,StepSize);
                 catch ME
-                    close_system("PatternSearch" + string(i), 0);
                     ErrorMessage = "Error when Calculating C(" + ThisNodeName + ")" + newline;
                     ErrorMessage = ErrorMessage + CatchProcess(ME,1);
                     error(ErrorMessage);

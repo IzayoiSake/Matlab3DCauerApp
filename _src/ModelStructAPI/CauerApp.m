@@ -77,7 +77,7 @@ function [ModelStruct] = CauerApp(ModelStruct)
         ErrorMessage = CatchProcess(ME,1);
         error(ErrorMessage);
     end
-% 8: function [ModelStruct,ErrorMessage] = PatternSearchC(ModelStruct,slxDir,Path_T,Path_P,ParPoolNum,StepSize)
+% 8: Identify the thermal capacitance of each effective node
     try
         if contains(ModelStruct.Temp.State,"PatternSearchC()")
             [ModelStruct] = PatternSearchC(ModelStruct);
@@ -91,12 +91,3 @@ function [ModelStruct] = CauerApp(ModelStruct)
         error(ErrorMessage);
     end
 end
-
-
-
-
-
-
-
-
-    

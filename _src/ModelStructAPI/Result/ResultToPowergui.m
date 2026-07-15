@@ -1,8 +1,6 @@
 
 function ModelStruct = ResultToPowergui(ModelStruct)
     slxPath = ModelStruct.Result.CircuitResultPath;
-    TemptPath = ModelStruct.Result.TransTemptPath;
-    PowerPath = ModelStruct.Result.TransPowerPath;
     SimulinkName = "";
     try
     % 1: get Simulink file's path
@@ -12,24 +10,17 @@ function ModelStruct = ResultToPowergui(ModelStruct)
             error('Simulink file path is not valid');
         end
         SimulinkName = SimulinkFileName;
-    % 2: Read the T and P files
+    % 2: Get the cached test data
         try
-            [TemperatureData,Type] = ReadFile(TemptPath);
-            if ~strcmp(Type,"TTS")
-                error('TransTemptFile is not valid');
-            end
+            TestData = ModelStruct.Result.TestData;
+            PHeader = TestData.PHeader;
+            Ptime = TestData.Ptime;
+            Pdata = TestData.PData;
+            THeader = TestData.THeader;
+            Ttime = TestData.Ttime;
+            Tdata = TestData.TData;
         catch ME
-            ErrorMessage = CatchProcess(ME,1);
-            error(ErrorMessage);
-        end
-        try
-            [PowerData,Type] = ReadFile(PowerPath);
-            if ~strcmp(Type,"TPS")
-                error('TransPowerFile is not valid');
-            end
-        catch ME
-            ErrorMessage = CatchProcess(ME,1);
-            error(ErrorMessage);
+            error("Test data is not loaded. " + CatchProcess(ME, 1));
         end
     % 3: check the output folder
         try
@@ -51,24 +42,7 @@ function ModelStruct = ResultToPowergui(ModelStruct)
             ErrorMessage = CatchProcess(ME,1);
             error(ErrorMessage);
         end
-    % 5: Process Power and Temperature data
-        PHeader = PowerData(1,2:end);
-        Ptime = PowerData(2:end,1);
-        Pdata = PowerData(2:end,2:end);
-        THeader = TemperatureData(1,2:end);
-        Ttime = TemperatureData(2:end,1);
-        Tdata = TemperatureData(2:end,2:end);
-        Nomenclature = ModelStruct.Temp.Nomenclature;
-        PHeader = ConvertNodeName(PHeader,Nomenclature);
-        THeader = ConvertNodeName(THeader,Nomenclature);
-        [PHeader,PIndex] = SortByNodeName(PHeader,ModelStruct.NodeName);
-        [THeader,TIndex] = SortByNodeName(THeader,ModelStruct.NodeName);
-        Pdata = Pdata(:,PIndex);
-        Tdata = Tdata(:,TIndex);
-        Ptime = double(Ptime);
-        Ttime = double(Ttime);
-        Pdata = double(Pdata);
-        Tdata = double(Tdata);
+    % 5: Save the data used to generate the circuit
         ModelStruct.Result.CircuitData.PHeader = PHeader;
         ModelStruct.Result.CircuitData.Ptime = Ptime;
         ModelStruct.Result.CircuitData.PData = Pdata;
@@ -110,6 +84,7 @@ function ModelStruct = ResultToPowergui(ModelStruct)
 
     % Add Blocks
         try
+            Position = [0,0];
         % Add the Simscape Solver Configuration block
             Name = "Solver Configuration";
             BlockPath = SimulinkName + "/" + Name;
@@ -124,11 +99,7 @@ function ModelStruct = ResultToPowergui(ModelStruct)
             set_param(BlockPath,"LocalSolverSampleTime","StepSize");
             % set the block position
             BlockSize = [100,100];
-            if ~exist('Position','var')
-                Position = [0,0];
-            else
-                Position = Position + [200,0];
-            end
+            Position = Position + [200,0];
             Rect = [Position,Position + BlockSize];
             set_param(BlockPath,"Position",Rect);
         % Capacitors
@@ -152,8 +123,6 @@ function ModelStruct = ResultToPowergui(ModelStruct)
                 if ~exist('Position','var')
                     Position = [0,0];
                 end
-                OriginalSize = get_param(BlockPath,"Position");
-                OriginalSize = [OriginalSize(3)-OriginalSize(1),OriginalSize(4)-OriginalSize(2)];
                 BlockSize = [100,100];
                 [Pos,Layer] = GetNodePosAndLay(ModelStruct.NodeNameEffective(i));
                 PositionC = Position + [400,0] .* Pos + [0,400] .* Layer;

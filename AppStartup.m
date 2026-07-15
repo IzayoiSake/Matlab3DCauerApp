@@ -35,6 +35,9 @@ function AppStartup(app)
         TextArea(i).Value = '';
     end
 
+% Result actions
+    ConfigureResultActions(app);
+    app.Label_3.Text = {'计算求解步长'; '(单位:s)'};
 
     app.ModelStruct = [];
     app.UsersData = [];

@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <toolset id="user_apps_toolset" template="false">
-    <tool app_file_path="_src/+Cauer3D/MainApp.mlapp"
+    <tool app_file_path="+Cauer3D/MainApp.mlapp"
           handler_class="com.mathworks.deployment.desktop.toolstrip.ToolboxToolSetExtensionHandler"
-          id="d3ec253d-e456-44fa-bd87-132d53e8dd05:Cauer3D.MainApp"
+          id="d3ec253d-e456-44fa-bd87-132d53e8dd05:Cauer3DApp_Launch_12bc950f12b74020b452770798ac7e97"
           label="Cauer3D"
           quick_access_eligible="false"
           toolset_id="user_apps_toolset">
-        <callback>Cauer3D.MainApp</callback>
+        <callback>Cauer3DApp_Launch_12bc950f12b74020b452770798ac7e97</callback>
         <summary></summary>
         <description></description>
         <icon filename="matlab_app_generic_icon_24" id="app"/>
